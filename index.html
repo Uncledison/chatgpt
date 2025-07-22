@@ -285,7 +285,7 @@
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/supabase/2.39.3/supabase.min.js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script>
         let gptData = [];
         const PASSWORD = "cotwlvlxl";
@@ -293,7 +293,9 @@
         // Supabase 설정
         const SUPABASE_URL = 'https://qdhfzljerlhktfoapxhe.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFkaGZ6bGplcmxoa3Rmb2FweGhlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMxODExODMsImV4cCI6MjA2ODc1NzE4M30.b5Be1qaB2GLX5l6rsHGSBhgH5_UNB3gxIwM6W1JSCR0';
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        // Supabase 클라이언트 초기화를 지연
+        let supabase;
 
         // 상태 메시지 표시
         function showStatus(message, isError = false) {
@@ -332,6 +334,11 @@
         // Supabase에서 데이터 불러오기
         async function loadData() {
             try {
+                // Supabase 클라이언트 초기화
+                if (!supabase) {
+                    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                }
+                
                 console.log('데이터 로딩 시작...');
                 
                 const { data, error } = await supabase
@@ -386,6 +393,11 @@
             saveBtn.textContent = '저장 중...';
             
             try {
+                // Supabase 클라이언트 초기화
+                if (!supabase) {
+                    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                }
+                
                 console.log('데이터 저장 시작:', { name, instructions: instructions.substring(0, 50) + '...', link });
                 
                 const { data, error } = await supabase
@@ -428,6 +440,11 @@
         async function deleteGPT(id) {
             if (confirm('정말 삭제하시겠습니까?')) {
                 try {
+                    // Supabase 클라이언트 초기화
+                    if (!supabase) {
+                        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    }
+                    
                     console.log('삭제 시작, ID:', id);
                     
                     const { error } = await supabase
