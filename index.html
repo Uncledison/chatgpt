@@ -97,6 +97,12 @@
             transform: translateY(-1px);
         }
         
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
         .search-box {
             width: 100%;
             padding: 12px;
@@ -189,6 +195,32 @@
             color: #86868b;
         }
         
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #86868b;
+        }
+        
+        .status-message {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            z-index: 1000;
+            display: none;
+        }
+        
+        .status-success {
+            background: #34c759;
+        }
+        
+        .status-error {
+            background: #ff3b30;
+        }
+        
         @media (max-width: 768px) {
             .form-row {
                 flex-direction: column;
@@ -201,6 +233,9 @@
     </style>
 </head>
 <body>
+    <!-- 상태 메시지 -->
+    <div id="statusMessage" class="status-message"></div>
+
     <!-- 로그인 화면 -->
     <div id="loginScreen" class="container" style="display: flex; justify-content: center; align-items: center; min-height: 100vh;">
         <div style="background: white; padding: 40px; border-radius: 12px; box-shadow: 0 2px 20px rgba(0,0,0,0.1); text-align: center; max-width: 400px; width: 100%;">
@@ -221,7 +256,7 @@
     <!-- 메인 화면 -->
     <div id="mainScreen" class="container" style="display: none;">
         <div class="header">
-            <h1>🤖 GPT 지침 백업</h1>
+            <h1>🤖 GPT 지침 백업 <span style="font-size: 14px; color: #86868b;">(Supabase 연동)</span></h1>
             <div class="add-form">
                 <div class="form-row">
                     <div class="form-group">
@@ -232,7 +267,7 @@
                         <label for="gptLink">링크 주소 (선택)</label>
                         <input type="text" id="gptLink" placeholder="https://chatgpt.com/g/...">
                     </div>
-                    <button class="btn" onclick="addGPT()">저장</button>
+                    <button class="btn" onclick="addGPT()" id="saveBtn">저장</button>
                 </div>
                 <div class="form-group">
                     <label for="gptInstructions">지침</label>
@@ -244,16 +279,33 @@
         <input type="text" class="search-box" id="searchBox" placeholder="🔍 검색..." onkeyup="searchGPTs()">
         
         <div class="gpt-list" id="gptList">
-            <div class="empty-state">
-                <h3>아직 저장된 GPT가 없습니다</h3>
-                <p>위 폼에서 첫 번째 GPT를 추가해보세요!</p>
+            <div class="loading">
+                <h3>데이터를 불러오고 있습니다...</h3>
             </div>
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/supabase/2.39.3/supabase.min.js"></script>
     <script>
         let gptData = [];
-        const PASSWORD = "cotwlvlxl"; // 여기서 비밀번호 변경하세요
+        const PASSWORD = "cotwlvlxl";
+
+        // Supabase 설정
+        const SUPABASE_URL = 'https://qdhfzljerlhktfoapxhe.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFkaGZ6bGplcmxoa3Rmb2FweGhlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMxODExODMsImV4cCI6MjA2ODc1NzE4M30.b5Be1qaB2GLX5l6rsHGSBhgH5_UNB3gxIwM6W1JSCR0';
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // 상태 메시지 표시
+        function showStatus(message, isError = false) {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+            statusEl.className = `status-message ${isError ? 'status-error' : 'status-success'}`;
+            statusEl.style.display = 'block';
+            
+            setTimeout(() => {
+                statusEl.style.display = 'none';
+            }, 3000);
+        }
 
         // 비밀번호 확인
         function checkPassword() {
@@ -277,59 +329,137 @@
             });
         });
 
-        // 페이지 로드시 저장된 데이터 불러오기
-        function loadData() {
-            const saved = localStorage.getItem('gptBackup');
-            if (saved) {
-                gptData = JSON.parse(saved);
+        // Supabase에서 데이터 불러오기
+        async function loadData() {
+            try {
+                console.log('데이터 로딩 시작...');
+                
+                const { data, error } = await supabase
+                    .from('gpt_backups')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+                
+                if (error) {
+                    console.error('Supabase 에러:', error);
+                    throw error;
+                }
+                
+                console.log('불러온 데이터:', data);
+                
+                gptData = data.map(item => ({
+                    id: item.id,
+                    name: item.name,
+                    instructions: item.instructions,
+                    link: item.link,
+                    date: new Date(item.created_at).toLocaleString('ko-KR')
+                }));
+                
                 renderGPTs();
+                showStatus(`${gptData.length}개의 GPT 백업을 불러왔습니다`);
+                
+            } catch (error) {
+                console.error('데이터 로딩 에러:', error);
+                showStatus('데이터를 불러오는데 실패했습니다: ' + error.message, true);
+                
+                // 에러시 빈 상태 표시
+                document.getElementById('gptList').innerHTML = `
+                    <div class="empty-state">
+                        <h3>데이터를 불러올 수 없습니다</h3>
+                        <p>연결을 확인하고 새로고침해 주세요</p>
+                    </div>
+                `;
             }
         }
 
-        function addGPT() {
+        async function addGPT() {
             const name = document.getElementById('gptName').value.trim();
             const instructions = document.getElementById('gptInstructions').value.trim();
             const link = document.getElementById('gptLink').value.trim();
             
             if (!name || !instructions) {
-                alert('이름과 지침을 모두 입력해주세요!');
+                showStatus('이름과 지침을 모두 입력해주세요!', true);
                 return;
             }
             
-            const newGPT = {
-                id: Date.now(),
-                name: name,
-                instructions: instructions,
-                link: link,
-                date: new Date().toLocaleString('ko-KR')
-            };
+            const saveBtn = document.getElementById('saveBtn');
+            saveBtn.disabled = true;
+            saveBtn.textContent = '저장 중...';
             
-            gptData.unshift(newGPT);
-            saveData();
-            renderGPTs();
-            
-            // 폼 초기화
-            document.getElementById('gptName').value = '';
-            document.getElementById('gptInstructions').value = '';
-            document.getElementById('gptLink').value = '';
+            try {
+                console.log('데이터 저장 시작:', { name, instructions: instructions.substring(0, 50) + '...', link });
+                
+                const { data, error } = await supabase
+                    .from('gpt_backups')
+                    .insert([
+                        {
+                            name: name,
+                            instructions: instructions,
+                            link: link || null
+                        }
+                    ])
+                    .select();
+                
+                if (error) {
+                    console.error('저장 에러:', error);
+                    throw error;
+                }
+                
+                console.log('저장 성공:', data);
+                
+                // 폼 초기화
+                document.getElementById('gptName').value = '';
+                document.getElementById('gptInstructions').value = '';
+                document.getElementById('gptLink').value = '';
+                
+                // 데이터 새로고침
+                await loadData();
+                
+                showStatus('✅ GPT 백업이 성공적으로 저장되었습니다!');
+                
+            } catch (error) {
+                console.error('저장 에러:', error);
+                showStatus('저장하는데 실패했습니다: ' + error.message, true);
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = '저장';
+            }
         }
 
-        function deleteGPT(id) {
+        async function deleteGPT(id) {
             if (confirm('정말 삭제하시겠습니까?')) {
-                gptData = gptData.filter(gpt => gpt.id !== id);
-                saveData();
-                renderGPTs();
+                try {
+                    console.log('삭제 시작, ID:', id);
+                    
+                    const { error } = await supabase
+                        .from('gpt_backups')
+                        .delete()
+                        .eq('id', id);
+                    
+                    if (error) {
+                        console.error('삭제 에러:', error);
+                        throw error;
+                    }
+                    
+                    console.log('삭제 성공');
+                    
+                    // 데이터 새로고침
+                    await loadData();
+                    
+                    showStatus('✅ 삭제되었습니다!');
+                    
+                } catch (error) {
+                    console.error('삭제 에러:', error);
+                    showStatus('삭제하는데 실패했습니다: ' + error.message, true);
+                }
             }
         }
 
         function copyToClipboard(instructions) {
             navigator.clipboard.writeText(instructions).then(function() {
-                alert('클립보드에 복사되었습니다!');
+                showStatus('📋 클립보드에 복사되었습니다!');
+            }).catch(function() {
+                showStatus('복사에 실패했습니다', true);
             });
-        }
-
-        function saveData() {
-            localStorage.setItem('gptBackup', JSON.stringify(gptData));
         }
 
         function searchGPTs() {
@@ -357,26 +487,40 @@
             listContainer.innerHTML = dataToRender.map(gpt => `
                 <div class="gpt-item">
                     <div class="gpt-header">
-                        <div class="gpt-name">${gpt.name}</div>
+                        <div class="gpt-name">${escapeHtml(gpt.name)}</div>
                         <div class="gpt-date">${gpt.date}</div>
-                        ${gpt.link ? `<div style="margin-top: 8px;"><a href="${gpt.link}" target="_blank" style="color: #007aff; text-decoration: none; font-size: 14px;">🔗 GPT 열기</a></div>` : ''}
+                        ${gpt.link ? `<div style="margin-top: 8px;"><a href="${escapeHtml(gpt.link)}" target="_blank" style="color: #007aff; text-decoration: none; font-size: 14px;">🔗 GPT 열기</a></div>` : ''}
                     </div>
                     <div class="gpt-content">
-                        <div class="gpt-instructions">${gpt.instructions}</div>
+                        <div class="gpt-instructions">${escapeHtml(gpt.instructions)}</div>
                     </div>
                     <div class="gpt-actions">
-                        <button class="btn-small" onclick="copyToClipboard(\`${gpt.instructions.replace(/`/g, '\\`')}\`)">복사</button>
+                        <button class="btn-small" onclick="copyToClipboard(\`${gpt.instructions.replace(/`/g, '\\`').replace(/\\/g, '\\\\')}\`)">복사</button>
                         <button class="btn-small delete" onclick="deleteGPT(${gpt.id})">삭제</button>
                     </div>
                 </div>
             `).join('');
         }
 
+        // HTML 이스케이프 함수
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
         // Enter 키로 저장
-        document.getElementById('gptInstructions').addEventListener('keydown', function(e) {
-            if (e.ctrlKey && e.key === 'Enter') {
-                addGPT();
-            }
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(() => {
+                const instructionsEl = document.getElementById('gptInstructions');
+                if (instructionsEl) {
+                    instructionsEl.addEventListener('keydown', function(e) {
+                        if (e.ctrlKey && e.key === 'Enter') {
+                            addGPT();
+                        }
+                    });
+                }
+            }, 100);
         });
     </script>
 </body>
